@@ -52,6 +52,9 @@ This should store videos of the expert demonstrations loaded in the expert buffe
 Use the following command to test the training pipeline. If it executes without errors, you are all set to begin training!
 
 ```bash
+# Only for ManiSkill
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json # Please change this to your vulkan path
+
 SUITE="robomimic" # [robomimic | maniskill | robocasa]
 TASK="can" # Any of the tasks in the paper for the respective suite
 conda activate ${SUITE}_env
@@ -69,6 +72,9 @@ The SAILOR agent is trained in 3 steps:
 
 To train a SAILOR agent on ```Square``` task in ```RoboMimic``` suite, run the following command with number of expert demostrations (```NUM_EXP_TRAJS```) and seed (```SEED```).
 ```bash
+# Only for ManiSkill
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json # Please change this to your vulkan path
+
 SUITE="robomimic" # [robomimic | maniskill | robocasa]
 TASK="square" # Any task of the respective suite
 NUM_EXP_TRAJS=50

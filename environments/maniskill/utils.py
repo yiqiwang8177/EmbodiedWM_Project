@@ -13,9 +13,9 @@ from sailor.classes.rollout_utils import get_act_stacked, get_obs_stacked
 from sailor.dreamer.tools import add_to_cache
 
 H5DIR = {
-    "pullcube": "pullcube/PullCubeTwoCam55Traj.rgb.pd_ee_delta_pose.physx_cpu.h5",
-    "liftpeg": "liftpeg/LiftPegUprightTwoCam-55Traj.rgb.pd_ee_delta_pose.physx_cpu.h5",
-    "pokecube": "pokecube/PokeCubeTwoCam-55Traj.rgb.pd_ee_delta_pose.physx_cpu.h5",
+    "pullcube": "pullcube/demo.rgb.pd_ee_delta_pose.physx_cpu.h5",
+    "liftpeg": "liftpeg/demo.rgb.pd_ee_delta_pose.physx_cpu.h5",
+    "pokecube": "pokecube/demo.rgb.pd_ee_delta_pose.physx_cpu.h5",
 }
 
 ENV_MAP = {
