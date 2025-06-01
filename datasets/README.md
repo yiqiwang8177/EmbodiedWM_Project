@@ -3,8 +3,8 @@ We provide details on using the collected demonstrations to train SAILOR.
 
 ## Downloading datasets
 The collected demonstrations is available for download at this [link](https://huggingface.co/datasets/arnavkj1995/SAILOR/tree/main). Use the following command to download the datasets:
-```
-python download_datasets.py
+```bash
+cd datasets && python download_datasets.py && cd ..
 ```
 
 The dataset should be downloaded in the datasets folder of the code with the final directory structure being

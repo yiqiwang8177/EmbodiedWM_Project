@@ -185,6 +185,8 @@ def get_train_val_datasets_maniskill(config):
                 state_list.append(np.array(h5_traj_data["obs"]["extra"][key])[:, None])
         npz_traj_data["state"] = np.concatenate(state_list, axis=-1)
         traj_len = len(npz_traj_data["state"]) // config.action_repeat
+
+        # Skip trajectories that are too long (some issue in collecting data)
         if traj_len > 1.5 * config.time_limit:
             print(
                 f"Trajectory {demo_key} is too long, skipping. Max allowed: {config.time_limit*1.5}, length: {traj_len}"

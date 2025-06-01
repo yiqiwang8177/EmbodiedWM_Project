@@ -1,6 +1,7 @@
 # General
 __pycache__/
 wandb**
+.gitattributes
 
 # SAILOR specific
 sbatch/**

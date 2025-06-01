@@ -32,7 +32,7 @@ cd robocasa && git checkout 9f14a76cde2b87c473cbbc5a87eb975b80c2cab6 && pip inst
 ```
 
 ## Expert demonstrations :floppy_disk:
-Follow instructions in [datasets/README.md](https://github.com/portal-cornell/SAILOR/blob/main/datasets/README.md) to download and extract the datasets for the given environments and suites. For RoboMimic tasks, we use the datasets provided in the benchamark, whereas demonstrations are collected for ManiSkill and RoboSuite tasks via a human teleoperator using a 3D space mouse. Once downloaded and extracted, run the following command to store videos of data loaded in the expert buffer to inspect if the expert dataset is loaded correctly.
+Follow instructions in [datasets/README.md](https://github.com/arnavkj1995/SAILOR/blob/main/datasets/README.md) to download and extract the datasets for the given environments and suites. For RoboMimic tasks, we use the datasets provided in the benchamark, whereas demonstrations are collected for ManiSkill and RoboSuite tasks via a human teleoperator using a 3D space mouse. Once downloaded and extracted, run the following command to store videos of data loaded in the expert buffer to inspect if the expert dataset is loaded correctly.
 
 ```bash
 SUITE="robomimic" # [robomimic | maniskill | robocasa]
@@ -45,6 +45,8 @@ python3 train_sailor.py --wandb_exp_name "test_mppi" \
     --task "${SUITE}__${TASK}" \
     --num_exp_trajs ${NUM_EXP_TRAJS}
 ```
+
+This should store videos of the expert demonstrations loaded in the expert buffer to `demos/(suite)__(task)/` directory. Videos will be stored in the same resolution and control frequency as loaded in the expert buffer.
 
 ### Verifying the setup :nut_and_bolt:
 Use the following command to test the training pipeline. If it executes without errors, you are all set to begin training!

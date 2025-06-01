@@ -1,14 +1,15 @@
+import collections
 import os
 
 import h5py
 import numpy as np
-import robocasa.utils.robomimic.robomimic_dataset_utils as DatasetUtils
-import robocasa.utils.robomimic.robomimic_env_utils as EnvUtils
 from termcolor import cprint
 
+import robocasa.utils.robomimic.robomimic_dataset_utils as DatasetUtils
+import robocasa.utils.robomimic.robomimic_env_utils as EnvUtils
 from environments.robocasa.additional_envs import *
 from environments.robocasa.robocasa_wrapper import RoboCasaWrapper
-from environments.robomimic.utils import create_shape_meta
+from environments.robomimic.utils import add_traj_to_cache, create_shape_meta
 from sailor.dreamer.tools import set_seed_everywhere
 
 
@@ -76,13 +77,13 @@ def make_env_robocasa(config, suite, task):
     )
 
 
-import collections
-from collections import defaultdict
+def get_index_of_first_non_zero_velocity(avg_joint_vel):
+    # Smoothen the average joint velocity
+    avg_joint_vel = np.convolve(avg_joint_vel, np.ones(10) / 10, mode="valid")
 
-import h5py
-import numpy as np
-
-from environments.robomimic.utils import add_traj_to_cache
+    # Get the index of the first non-zero velocity
+    first_ind = np.where(np.abs(avg_joint_vel) > 0.01)[0][0]
+    return first_ind
 
 
 def get_train_val_datasets(config):
@@ -107,64 +108,57 @@ def get_train_val_datasets(config):
         demos
     ), f"Not enough expert data, requested {num_train_trajs} + {num_val_trajs} = {num_train_trajs + num_val_trajs} but only {len(demos)} available"
 
-    # If action repeat, remove every other demo
-    if action_repeat > 1:
-        new_data_dict = {"data": {}}
-        ii = 0
-        clean_demos = []
-        while len(clean_demos) < num_train_trajs + num_val_trajs:
-            # Joint velocicity filter
-            avg_joint_vel = np.array(
-                h5py_file["data"][demos[ii]]["obs"]["robot0_joint_vel"]
-            ).mean(
-                axis=1
-            )  # shape len_traj
-            avg_joint_vel = np.convolve(
-                avg_joint_vel, np.ones(10) / 10, mode="valid"
-            )  # Smoothening
+    # Apply velocity filter and action repeat
+    new_data_dict = {"data": {}}
+    ii = 0
+    clean_demos = []
+    while len(clean_demos) < num_train_trajs + num_val_trajs:
+        # Find index of timestep where velocity is non-zero
+        avg_joint_vel = np.array(
+            h5py_file["data"][demos[ii]]["obs"]["robot0_joint_vel"]
+        ).mean(axis=1)
+        first_ind = get_index_of_first_non_zero_velocity(avg_joint_vel)
 
-            # Check first instance data>0.01
-            first_ind = np.where(np.abs(avg_joint_vel) > 0.01)[0][0]
+        # If number of timesteps with zero velocity is greater than 5, trim it to 5
+        # 5 is chosen here as most correct demos have about 5 timesteps of zero velocity
+        if first_ind > 5:
+            print(
+                f"Zero actions detected at demo: {demos[ii]}, trimming first {first_ind-5} timesteps"
+            )
+            first_ind = max(first_ind - 5, 0)
+        else:
+            first_ind = 0
 
-            if first_ind > 5:
-                print(
-                    f"Zero actions detected at counter: {ii}, demo: {demos[ii]}, trimming and using {first_ind} -> {len(avg_joint_vel)}"
-                )
-                first_ind = max(first_ind - 5, 0)
-            else:
-                first_ind = 0
+        demo_orig = h5py_file["data"][demos[ii]]
+        demo_new = {demos[ii]: {}}
 
-            demo_orig = h5py_file["data"][demos[ii]]
-            demo_new = {demos[ii]: {}}
+        # Apply action repeat to demo_orig["obs"]
+        demo_new[demos[ii]]["obs"] = {}
+        for key in demo_orig["obs"].keys():
+            npz_data = np.array(demo_orig["obs"][key])
+            demo_new[demos[ii]]["obs"][key] = npz_data[first_ind:][::action_repeat]
 
-            # Apply action repeat to demo_orig["obs"]
-            demo_new[demos[ii]]["obs"] = {}
-            for key in demo_orig["obs"].keys():
-                npz_data = np.array(demo_orig["obs"][key])
-                demo_new[demos[ii]]["obs"][key] = npz_data[first_ind:][::action_repeat]
+        # Apply action repeat to demo_orig["actions"]
+        demo_new[demos[ii]]["actions"] = np.array(demo_orig["actions"])[first_ind:][
+            ::action_repeat
+        ]
 
-            # Apply action repeat to demo_orig["actions"]
-            demo_new[demos[ii]]["actions"] = np.array(demo_orig["actions"])[first_ind:][
-                ::action_repeat
-            ]
+        # Apply action repeat to demo_orig["rewards]
+        demo_new[demos[ii]]["rewards"] = np.array(demo_orig["rewards"])[first_ind:][
+            ::action_repeat
+        ]
 
-            # Apply action repeat to demo_orig["rewards]
-            demo_new[demos[ii]]["rewards"] = np.array(demo_orig["rewards"])[first_ind:][
-                ::action_repeat
-            ]
+        # Apply action repeat to demo_orig["dones"]
+        demo_new[demos[ii]]["dones"] = np.array(demo_orig["dones"])[first_ind:][
+            ::action_repeat
+        ]
 
-            # Apply action repeat to demo_orig["dones"]
-            demo_new[demos[ii]]["dones"] = np.array(demo_orig["dones"])[first_ind:][
-                ::action_repeat
-            ]
+        new_data_dict["data"].update(demo_new)
+        clean_demos.append(demos[ii])
+        ii += 1
 
-            new_data_dict["data"].update(demo_new)
-            clean_demos.append(demos[ii])
-            ii += 1
-
-        h5py_file.close()
-        h5py_file = new_data_dict
-        demos = clean_demos
+    # Close the h5py file
+    h5py_file.close()
 
     obs_keys = shape_meta["obs"].keys()
     pixel_keys = sorted([key for key in obs_keys if "image" in key])
@@ -172,7 +166,7 @@ def get_train_val_datasets(config):
 
     # Initialize norm_dict
     # Read ob_dim and ac_dim from the first datapoint in the first demo
-    first_demo = h5py_file["data"][demos[0]]
+    first_demo = new_data_dict["data"][clean_demos[0]]
     ob_dim = 0
     for key in state_keys:
         ob_dim += np.prod(first_demo["obs"][key].shape[1:])
@@ -195,9 +189,16 @@ def get_train_val_datasets(config):
 
     # Fill the Train Dataset
     for ii in range(num_train_trajs):
-        demo = demos[ii]
+        demo = clean_demos[ii]
         add_traj_to_cache(
-            ii, demo, train_eps, h5py_file, config, pixel_keys, state_keys, norm_dict
+            ii,
+            demo,
+            train_eps,
+            new_data_dict,
+            config,
+            pixel_keys,
+            state_keys,
+            norm_dict,
         )
 
     # Compute average length in data in train_eps
@@ -219,17 +220,15 @@ def get_train_val_datasets(config):
 
     # Fill the Val Dataset
     for ii in range(num_train_trajs, num_train_trajs + num_val_trajs):
-        demo = demos[ii]
-        add_traj_to_cache(ii, demo, val_eps, h5py_file, config, pixel_keys, state_keys)
+        demo = clean_demos[ii]
+        add_traj_to_cache(
+            ii, demo, val_eps, new_data_dict, config, pixel_keys, state_keys
+        )
     print(
         "Loaded",
         len(val_eps.keys()),
         "validation episodes, action_repeat=",
         action_repeat,
     )
-
-    # Close the h5py file
-    if type(h5py_file) == h5py.File:
-        h5py_file.close()
 
     return train_eps, val_eps, norm_dict, state_dim, action_dim
