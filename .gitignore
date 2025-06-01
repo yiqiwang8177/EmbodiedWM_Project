@@ -1,0 +1,12 @@
+# General
+__pycache__/
+wandb**
+
+# SAILOR specific
+sbatch/**
+scratch_dir**
+datasets/maniskill_datasets**
+datasets/robomimic_datasets**
+datasets/robocasa_datasets**
+
+demos/**
