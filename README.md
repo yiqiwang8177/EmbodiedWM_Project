@@ -6,7 +6,11 @@ Official implementation of SAILOR introduced in
 
 by [Arnav Kumar Jain*](https://arnavkj1995.github.io/), [Vibhakar Mohta*](https://sites.google.com/view/vibhakarmohta/), [Subin Kim](https://ksb21st.github.io/), [Atiksh Bhardwaj](https://atikshb.github.io/), [Juntao Ren](https://jren03.github.io/), [Yunhai Feng](yunhaifeng.com), [Sanjiban Choudhury](https://sanjibanc.github.io/), and [Gokul Swamy](https://gokul.dev/)
 
-[[Website]]() [[Paper]]() [[Twitter]]()
+[![arXiv](https://img.shields.io/badge/arXiv-2506.05294-df2a2a.svg?style=for-the-badge)](https://arxiv.org/abs/2506.05294)
+[![HF Datasets](https://img.shields.io/badge/%F0%9F%A4%97-Datasets-yellow?style=for-the-badge)](https://huggingface.co/datasets/arnavkj1995/SAILOR)
+[![License](https://img.shields.io/github/license/TRI-ML/prismatic-vlms?style=for-the-badge)](LICENSE)
+<!-- [![X Post](https://img.shields.io/badge/Summary-1DA1F2?logo=x&logoColor=white&style=for-the-badge)]() -->
+[![Website](https://img.shields.io/badge/🔗-Site-black?style=for-the-badge)](https://yourprojectsite.com)
 
 We introduce SAILOR-- a model-based inverse RL approach for *learning to search* from expert demonstrations. With learned world and reward models on a mixture of expert and on-policy data, the agent in endowed with the ability to, at test time, reason about how to recover from mistakes that the base policy makes.
 
@@ -70,7 +74,7 @@ The SAILOR agent is trained in 3 steps:
 2. **Phase 2**: Collect multiple trajectories with pre-trained DP to warmstart the world model and reward model.
 3. **Phase 3**: Update the agent with multiple rounds where each round involves collecting on-policy trajectories with the planner, updating models, and (optional) finetune the DP by distillation.
 
-To train a SAILOR agent on ```Square``` task in ```RoboMimic``` suite, run the following command with number of expert demostrations (```NUM_EXP_TRAJS```) and seed (```SEED```).
+To train a SAILOR agent on ```Square``` task in ```RoboMimic``` suite, run the following command with number of expert demostrations (```NUM_EXP_TRAJS```) and seed (```SEED```). The models are trained on a single NVIDIA 6000 Ada GPU with 48 GB memory.
 ```bash
 # Only for ManiSkill
 export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.x86_64.json # Please change this to your vulkan path
@@ -117,16 +121,16 @@ If you build on our work or find it useful, please cite it using the following b
 
 ```bibtex
 @article{jain2025sailor,
-    title={},
-    author={},
+    title={A Smooth Sea Never Made a Skilled 𝚂𝙰𝙸𝙻𝙾𝚁: Robust Imitation via Learning to Search},
+    author={Arnav Kumar Jain and Vibhakar Mohta and Subin Kim and Atiksh Bhardwaj and Juntao Ren and Yunhai Feng and Sanjiban Choudhury and Gokul Swamy},
     journal={CoRR},
-    volume={abs/},
+    volume={abs/2506.05294},
     year={2025}
 }
 ```
 
 ### Acknowledgements :pencil:
-This codebase is heavly inspired from the following repositories:
+This codebase is inspired from the following repositories:
 1. Sudeep Dasari's implementation of Diffusion Policy in [DiT-policy](https://github.com/sudeepdasari/dit-policy) 
 2. Danijar's implementation of [DreamerV3](https://github.com/danijar/dreamerv3)
 3. Naoki Morihira's [DreamerV3](https://github.com/NM512/dreamerv3-torch) in PyTorch.
