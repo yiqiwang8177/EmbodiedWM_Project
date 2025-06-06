@@ -10,7 +10,7 @@ by [Arnav Kumar Jain*](https://arnavkj1995.github.io/), [Vibhakar Mohta*](https:
 [![HF Datasets](https://img.shields.io/badge/%F0%9F%A4%97-Datasets-yellow?style=for-the-badge)](https://huggingface.co/datasets/arnavkj1995/SAILOR)
 [![License](https://img.shields.io/github/license/TRI-ML/prismatic-vlms?style=for-the-badge)](LICENSE)
 <!-- [![X Post](https://img.shields.io/badge/Summary-1DA1F2?logo=x&logoColor=white&style=for-the-badge)]() -->
-[![Website](https://img.shields.io/badge/🔗-Site-black?style=for-the-badge)](https://yourprojectsite.com)
+<!-- [![Website](https://img.shields.io/badge/🔗-WebSite-black?style=for-the-badge)]() -->
 
 We introduce SAILOR-- a model-based inverse RL approach for *learning to search* from expert demonstrations. With learned world and reward models on a mixture of expert and on-policy data, the agent in endowed with the ability to, at test time, reason about how to recover from mistakes that the base policy makes.
 
