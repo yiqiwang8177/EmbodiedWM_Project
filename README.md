@@ -9,13 +9,13 @@ by [Arnav Kumar Jain*](https://arnavkj1995.github.io/), [Vibhakar Mohta*](https:
 [![arXiv](https://img.shields.io/badge/arXiv-2506.05294-df2a2a.svg?style=for-the-badge&logo=arxiv)](https://arxiv.org/abs/2506.05294)
 [![HF Datasets](https://img.shields.io/badge/%F0%9F%A4%97-Datasets-yellow?style=for-the-badge)](https://huggingface.co/datasets/arnavkj1995/SAILOR)
 [![License](https://img.shields.io/github/license/TRI-ML/prismatic-vlms?style=for-the-badge)](LICENSE)
-[![Website](https://img.shields.io/badge/🔗-WebSite-black?style=for-the-badge)](https://gokul.dev/sailor/)<!-- [![X Post](https://img.shields.io/badge/Summary-1DA1F2?logo=x&logoColor=white&style=for-the-badge)]() -->
-
+[![Website](https://img.shields.io/badge/🔗-WebSite-black?style=for-the-badge)](https://gokul.dev/sailor/)
+[![Summary](https://img.shields.io/badge/ -Summary-1DA1F2?logo=x&logoColor=white&labelColor=gray&style=for-the-badge)](https://x.com/g_k_swamy/status/1932477863162155220)
 
 We introduce SAILOR-- a model-based inverse RL approach for *learning to search* from expert demonstrations. With learned world and reward models on a mixture of expert and on-policy data, the agent in endowed with the ability to, at test time, reason about how to recover from mistakes that the base policy makes.
 
 <p align="center">
-  <img width="1000" src="assets/sailor_method_fig.png">
+  <img width="1000" src="assets/sailor_method_fig.gif">
 </p>
 
 Across various visual manipulation problems at different expert dataset scales, SAILOR outperforms Diffusion Policy trained on the same demonstrations. 
