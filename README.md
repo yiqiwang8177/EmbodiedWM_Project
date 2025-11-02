@@ -1,10 +1,10 @@
 # :sailboat: SAILOR: Searching Across Imagined Latents Online for Recovery 
 
-Official implementation of SAILOR introduced in
+Official implementation of SAILOR (**NeurIPS 2025 Spotlight**) introduced in
 
 ## [A Smooth Sea Never Made a Skilled SAILOR: Robust Imitation via Learning to Search]() 
 
-by [Arnav Kumar Jain*](https://arnavkj1995.github.io/), [Vibhakar Mohta*](https://sites.google.com/view/vibhakarmohta/), [Subin Kim](https://ksb21st.github.io/), [Atiksh Bhardwaj](https://atikshb.github.io/), [Juntao Ren](https://jren03.github.io/), [Yunhai Feng](yunhaifeng.com), [Sanjiban Choudhury](https://sanjibanc.github.io/), and [Gokul Swamy](https://gokul.dev/)
+by [Arnav Kumar Jain*](https://arnavkj1995.github.io/), [Vibhakar Mohta*](https://sites.google.com/view/vibhakarmohta/), [Subin Kim](https://ksb21st.github.io/), [Atiksh Bhardwaj](https://atikshb.github.io/), [Juntao Ren](https://jren03.github.io/), [Yunhai Feng](http://yunhaifeng.com), [Sanjiban Choudhury](https://sanjibanc.github.io/), and [Gokul Swamy](https://gokul.dev/)
 
 [![arXiv](https://img.shields.io/badge/arXiv-2506.05294-df2a2a.svg?style=for-the-badge&logo=arxiv)](https://arxiv.org/abs/2506.05294)
 [![HF Datasets](https://img.shields.io/badge/%F0%9F%A4%97-Datasets-yellow?style=for-the-badge)](https://huggingface.co/datasets/arnavkj1995/SAILOR)
@@ -120,12 +120,13 @@ You should be all set to run SAILOR with your own environment now! If you face a
 If you build on our work or find it useful, please cite it using the following bibtex.
 
 ```bibtex
-@article{jain2025sailor,
-    title={A Smooth Sea Never Made a Skilled 𝚂𝙰𝙸𝙻𝙾𝚁: Robust Imitation via Learning to Search},
-    author={Arnav Kumar Jain and Vibhakar Mohta and Subin Kim and Atiksh Bhardwaj and Juntao Ren and Yunhai Feng and Sanjiban Choudhury and Gokul Swamy},
-    journal={CoRR},
-    volume={abs/2506.05294},
-    year={2025}
+@inproceedings{
+  jain2025a,
+  title={A Smooth Sea Never Made a Skilled {SAILOR}: Robust Imitation via Learning to Search},
+  author={Arnav Kumar Jain and Vibhakar Mohta and Subin Kim and Atiksh Bhardwaj and Juntao Ren and Yunhai Feng and Sanjiban Choudhury and Gokul Swamy},
+  booktitle={The Thirty-ninth Annual Conference on Neural Information Processing Systems},
+  year={2025},
+  url={https://openreview.net/forum?id=qN5hmLkBtC}
 }
 ```
 
