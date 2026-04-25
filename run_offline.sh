@@ -2,7 +2,7 @@ SUITE="robomimic" # [robomimic | maniskill | robocasa]
 TASK="can" # Any task of the respective suite
 NUM_EXP_TRAJS=50
 SEED=0
-ckpt_path="ckpt_dirs/can_50/DP_Pretrain_base_policy_latest.pt"
+ckpt_path="./../ckpt_dirs/can_50/DP_Pretrain_base_policy_latest.pt"
 conda activate ${SUITE}_env
 usemppi=False
 lps=True
