@@ -81,8 +81,10 @@ defaults:
   initial: 'learned'
 
   # Training
-  batch_size: 16
-  batch_length: 32
+  use_mppi: True # if false, use policy steering
+  lps_reward: False # if true, use lps rewards
+  batch_size: 128 # 16
+  batch_length: 8 # 32
   model_lr: 1e-4
   opt_eps: 1e-8
   grad_clip: 1000
@@ -161,7 +163,7 @@ defaults:
     dp_expert_buffer_ratio: 0.5 # ablate
 
     # Discriminator
-    use_discrim: True
+    use_discrim: False
     discrim_state_only: True
     upate_discrim_every: 100
 

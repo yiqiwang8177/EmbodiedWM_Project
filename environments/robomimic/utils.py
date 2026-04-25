@@ -1,6 +1,7 @@
 import collections
 import os
 import sys
+import numpy as np
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict
@@ -179,7 +180,9 @@ def add_traj_to_cache(
         stacked_obs[key] = get_obs_stacked(traj["obs"][key], config.obs_horizon)
 
     # Stack Actions
+    
     stacked_acts = get_act_stacked(traj["actions"], config.pred_horizon)
+
 
     # Update norm_dict for the environment
     if norm_dict is not None:

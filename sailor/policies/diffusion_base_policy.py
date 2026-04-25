@@ -19,7 +19,6 @@ from sailor.diffusion.data4robotics.trainers.bc import BehaviorCloning
 from sailor.diffusion.data4robotics.trainers.utils import optim_builder
 from sailor.dreamer import tools
 
-
 class WeigtedActionWrapper:
     IMAGE_KEYS = ["agentview_image", "robot0_eye_in_hand_image"]
 
@@ -83,8 +82,9 @@ class WeigtedActionWrapper:
         obs["state"] = obs["state"][:, None, ...]  # (num_envs, 1, ...)
 
         # Preprocess the data (input shape is [num_envs x obs_horizon x ...])
+       
         obs = self.preprocessor.preprocess_batch(obs, training=False)
-
+      
         if not self.config.state_only:
             if "robot0_eye_in_hand_image" in obs.keys():
                 images = {
@@ -148,7 +148,7 @@ class WeigtedActionWrapper:
 
         return weighted_action
 
-    def get_action(self, obs, scale=1.0, weighting=True, get_full_action=False):
+    def get_action(self, obs, scale=1.0, weighting=True, get_full_action=False, samples=1):
         """
         obs orignial shape <data_dim> no stacking
         parallel env obs shape: (num_envs, data_dim)
@@ -165,9 +165,10 @@ class WeigtedActionWrapper:
             ]
 
         images, state = self._get_images_and_states(obs)
+
         with torch.no_grad():
-            # Shape (num_envs, pred_horizon, ...)
-            action = self.agent.get_actions(images, state, scale=scale)
+            # Shape (num_envs, pred_horizon, ...) or (num_envsxsamples), ....
+            action = self.agent.get_actions(images, state, scale=scale, samples=samples)
 
         acs = action.cpu().numpy().astype(np.float32)
 
@@ -184,38 +185,6 @@ class WeigtedActionWrapper:
             action = acs if get_full_action else acs[:, 0, :]
         return action
 
-    def get_action_batched(self, obs):
-        """
-        TODO: fix this for mutliple envs
-        This function takes an observation as input,
-        and saves the chunks of the predicted actions in a deque.
-        The goal is to keep taking that action till the prediction horizon is reached.
-        """
-
-        if self.image_history is None or self.act_history is None:
-            self.num_envs = obs["state"].shape[0]
-            self.image_history = defaultdict(
-                lambda: [deque(maxlen=self.obs_horizon) for _ in range(self.num_envs)]
-            )
-            self.act_history = [
-                deque(maxlen=self.pred_horizon) for _ in range(self.num_envs)
-            ]
-
-        images, state = self._get_images_and_states(obs)
-
-        if len(self.pred_action_history) == 0:
-            with torch.no_grad():
-                actions = (
-                    self.agent.get_actions(images, state)
-                    .cpu()
-                    .numpy()
-                    .astype(np.float32)
-                )
-                for i in range(self.pred_horizon):
-                    self.pred_action_history.append(actions[:, i, :])
-
-        ac = self.pred_action_history.popleft()
-        return ac
 
 
 class DiffusionPolicyAgent:
@@ -416,7 +385,7 @@ class DiffusionBasePolicy:
         self.trainer.model.set_train()
         self.trainer.set_train()
 
-    def get_action(self, obs, scale=1.0, weighting=True, get_full_action=False):
+    def get_action(self, obs, scale=1.0, weighting=True, get_full_action=False, samples=1):
         """
         obs: B x T x ... (no stacking)
         Policy takes care of all the preprocessing
@@ -427,7 +396,7 @@ class DiffusionBasePolicy:
         # Get the actions from the model
         with torch.no_grad():
             model_actions = self.policy.get_action(
-                obs, weighting=weighting, get_full_action=get_full_action, scale=scale
+                obs, weighting=weighting, get_full_action=get_full_action, scale=scale, samples=samples
             )
 
         return model_actions
@@ -457,19 +426,6 @@ class DiffusionBasePolicy:
 
         return direct_action
 
-    def get_action_batched(self, obs):
-        """
-        obs: B x T x ob_chunck x ...
-        Policy takes care of all the preprocessing
-        """
-        # Make a copy of the obs
-        obs = copy.deepcopy(obs)
-
-        # Get the actions from the model
-        with torch.no_grad():
-            model_actions = self.policy.get_action_batched(obs)
-
-        return model_actions
 
     def train_base_policy(
         self,

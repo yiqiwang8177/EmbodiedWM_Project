@@ -16,10 +16,12 @@ class ResidualAgent:
         self,
         agent: Dreamer,
         add_acts=False,
+        offline=False,
     ):
         self.agent = agent
         self.add_acts = add_acts
-
+        self.offline = offline
+        
         # These stay for the entire instance for a class (therefore per evaluation)
         self.base_bin_edges = np.linspace(-1, 1, 21)  # 20 bins
         self.residual_bin_edges = np.linspace(-0.5, 0.5, 21)  # 20 bins
@@ -40,6 +42,7 @@ class ResidualAgent:
         policy_output_dict, self.state = self.agent.get_action(
             obs_orig=obs,
             state=self.state,
+            offline=self.offline,
         )
 
         # Detach and convert to numpy
@@ -109,10 +112,11 @@ class ResidualPolicy:
         self.logger = logger
         self._step = 0
 
-    def evaluate_agent(self, step_name, step=None):
+    def evaluate_agent(self, step_name, step=None, offline=False):
         residual_agent = ResidualAgent(
             agent=self.dreamer_class,
             add_acts=True,
+            offline=offline,
         )
         # Get the Success Rate
         evaluator = ModelEvaluator(

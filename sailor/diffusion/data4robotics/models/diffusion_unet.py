@@ -6,7 +6,7 @@
 
 import math
 from typing import Optional, Union
-
+from einops import repeat
 import numpy as np
 import torch
 import torch.nn as nn
@@ -412,11 +412,13 @@ class DiffusionUnetAgent(Agent):
         print("obs min", torch.min(obs, axis=0)[0])
         print("obs max", torch.max(obs, axis=0)[0])
 
-    def get_actions(self, imgs, obs, scale=1.0, n_steps=None):
+    def get_actions(self, imgs, obs, scale=1.0, n_steps=None, samples=1):
         # self.debug_batch(imgs, obs, "get_actions")
         # get observation encoding and sample noise
         B, device = obs.shape[0], obs.device
         s_t = self._shared_forward(imgs, obs)
+        B *= samples 
+        s_t = repeat(s_t, 'B d -> (B s) d', s=samples)
         noise_actions = torch.randn(B, self.ac_chunk, self.ac_dim, device=device)
 
         # set number of steps

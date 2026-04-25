@@ -363,6 +363,27 @@ def mixed_sample(
 
     return data_batch
 
+def sample_batch(
+    batch_size,
+    dataset,
+    device,
+    remove_obs_stack=True,
+):
+    """
+    Sample from the dataset
+    If remove_obs_stack is True, keep only latest obs in the batch
+    """
+    data_batch = next(dataset)
+
+    for key in data_batch.keys():
+
+        data_batch[key] = torch.tensor(data_batch[key], dtype=torch.float32).to(device)
+
+    if remove_obs_stack:
+        data_batch = select_latest_obs(data_batch)
+
+    return data_batch
+
 
 def select_latest_obs(obs: dict):
     # Removes the stacked observations, keeping only the latest one

@@ -10,7 +10,7 @@ from termcolor import cprint
 
 from sailor.classes.preprocess import Preprocessor
 from sailor.classes.resnet_encoder import ResNetEncoder
-from sailor.classes.rollout_utils import collect_onpolicy_trajs, mixed_sample
+from sailor.classes.rollout_utils import collect_onpolicy_trajs, mixed_sample, sample_batch
 from sailor.dreamer import tools
 from sailor.dreamer.dreamer_class import Dreamer
 from sailor.policies.diffusion_base_policy import (DiffusionBasePolicy,
@@ -102,6 +102,9 @@ class SAILORTrainer:
             full_ckpt_path = os.path.join(
                 self.config.scratch_dir, self.config.dp["pretrained_ckpt"]
             )
+            if not os.path.exists(full_ckpt_path):
+                full_ckpt_path = self.config.dp["pretrained_ckpt"]
+           
             base_policy.trainer.load_checkpoint(full_ckpt_path)
 
         if hasattr(self, "dreamer_class") and set_in_dreamer:
@@ -354,9 +357,9 @@ class SAILORTrainer:
             self.logger.scalar(f"train/n_round", round_id)
             self.logger.write(step=self._step, fps=True)
 
-    def eval_mppi_policy(self, prefix, round_id):
+    def eval_mppi_policy(self, prefix, round_id, offline=False):
         cprint("\nEvaluating MPPI Policy", "green")
-        self.residual_policy.evaluate_agent(step_name=prefix, step=self._step)
+        self.residual_policy.evaluate_agent(step_name=prefix, step=self._step, offline=offline)
 
         if self.logger is not None:
             num_buffer_transitions = count_n_transitions(self.replay_buffer)
@@ -592,3 +595,51 @@ class SAILORTrainer:
             print(f"Round {round_id} took {time.time() - start_time} seconds")
             if self.logger is not None:
                 self.logger.scalar(f"round_time", time.time() - start_time)
+
+    def _train_wm_offline(self):
+        expert_dataset = tools.make_dataset(
+            self.expert_eps,
+            batch_length=self.config.batch_length,
+            batch_size=self.config.batch_size,
+        )
+       
+        total_itrs, num_evals = 20000, 20
+        eval_interval = total_itrs // num_evals
+        for n_wm_itr in range(total_itrs):
+            batch = sample_batch(
+                batch_size=self.config.batch_size,
+                dataset=expert_dataset,
+                device=self.config.device,
+                remove_obs_stack=False,
+            )
+
+            metrics = self.dreamer_class._train_offline(
+                data=batch,
+                training_step=self._step,
+            )
+            self._step += 1
+
+            if self._step % self.config.log_every == 0:
+                print(
+                    f"[WM + Critic Training] Itr: {n_wm_itr}/{total_itrs}, Value Loss: {metrics['value_loss']}"
+                )
+
+                # Add metrics to logger and log it with prefix warmup
+                if self.logger is not None:
+                    for key, value in metrics.items():
+                        if not isinstance(value, float):
+                            value = np.mean(value)
+                        self.logger.scalar(f"wm_critic_train/{key}", value)
+
+                    self.logger.scalar(f"wm_critic_train/step", self._step)
+                    self.logger.scalar(f"wm_critic_train/itr", n_wm_itr)
+                    self.logger.write(step=self._step, fps=True)
+
+            if n_wm_itr % eval_interval == 0 and n_wm_itr > 0:
+                # Evaluate Base Policy
+                self.eval_mppi_policy(prefix=f"round_{n_wm_itr}", round_id=n_wm_itr, offline=True)
+                
+
+    def train_wm_offline(self):
+        self._train_wm_offline()
+        

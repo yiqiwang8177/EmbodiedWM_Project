@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from termcolor import cprint
+from einops import rearrange 
 
 from sailor.classes.rollout_utils import select_latest_obs
 from sailor.dreamer import tools
@@ -47,7 +48,7 @@ class Dreamer(nn.Module):
             self._wm = torch.compile(self._wm)
             self._task_behavior = torch.compile(self._task_behavior)
 
-    def get_action(self, obs_orig, state):
+    def get_action(self, obs_orig, state, offline=False):
         """
         Called during evaluation
         """
@@ -70,7 +71,7 @@ class Dreamer(nn.Module):
         feat = self._wm.dynamics.get_feat(latent)
 
         action_dict = self._task_behavior.get_action(
-            obs=obs_orig, feat=feat, latent=latent
+            obs=obs_orig, feat=feat, latent=latent, offline=offline
         )
 
         latent = {k: v.detach() for k, v in latent.items()}
@@ -111,6 +112,60 @@ class Dreamer(nn.Module):
                 start,
                 reward,
                 training_step,
+
+            )[-1]
+        )
+        return metrics
+
+    def _train_offline(self, data, training_step):
+        # Obs shape BS x BL x ... x stack_dim
+        metrics = {}
+        data_wm = select_latest_obs(data)  # Select only last obs and remove stacking
+        post, context, mets = self._wm._train(data_wm)
+        metrics.update(mets)
+        
+        # Remove redundant stacking over prediction horizon
+        if 'action' in data and len(data["action"].shape) == 4:
+            data["action"] = data["action"][...,0]
+
+        """
+        data:
+        agentview_image torch.Size([batch_size, batch_length, 64, 64, 3, 2])
+        robot0_eye_in_hand_image torch.Size([batch_size, batch_length, 64, 64, 3, 2])
+        state torch.Size([batch_size, batch_length, 9, 2])
+        success torch.Size([batch_size, batch_length])
+        reward torch.Size([batch_size, batch_length])
+        is_first torch.Size([batch_size, batch_length])
+        action torch.Size([batch_size, batch_length, 7])
+        is_last torch.Size([batch_size, batch_length])
+        is_terminal torch.Size([batch_size, batch_length])
+        """
+
+        # post:
+        # stoch: BS x BL x 32 x 32 
+        # deter: BS x BL x 512
+        # logit: BS x BL x 32 x 32 
+        # Unroll in latent space by taking the initial one. BL --> 1
+        post = {k: v[:,:1] for k, v in post.items()}
+        start = {"obs_orig": data, "post": post}
+        reward = data['reward'] 
+
+        policy_obs = None
+        if self._config.lps_reward:
+            policy_obs = {k:v[:, 0] for k,v in data.items()}
+            for k,v in policy_obs.items():
+                if 'image' in k:
+                    policy_obs[k] = rearrange(v, 'b h w c n -> b n h w c')
+                elif k == 'state':
+                    policy_obs[k] = rearrange(v, 'b d n -> b n d')
+            policy_obs = self._base_policy.preprocessor.preprocess_batch(policy_obs, training=False)
+        
+        metrics.update(
+            self._task_behavior._train_offline(
+                start,
+                training_step,
+                reward = reward,
+                policy_obs=policy_obs
             )[-1]
         )
         return metrics

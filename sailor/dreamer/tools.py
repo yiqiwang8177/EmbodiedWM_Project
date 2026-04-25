@@ -63,7 +63,6 @@ class Logger:
         # Initialize wandb
         wandb.init(
             project=config.wandb_project,
-            entity=config.wandb_entity,
             sync_tensorboard=False,
             config=vars(config),
             group=str(config.seed),
@@ -990,6 +989,7 @@ def recursively_load_optim_state_dict(obj, optimizers_state_dicts):
 
 
 def make_dataset(episodes, batch_size, batch_length):
+    
     generator = sample_episodes(episodes, batch_length)
     dataset = from_generator(generator, batch_size)
     return dataset

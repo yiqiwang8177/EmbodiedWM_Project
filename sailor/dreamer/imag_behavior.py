@@ -182,6 +182,88 @@ class ImagBehavior(nn.Module):
 
         return imag_feat, imag_state, None, weights, metrics
 
+    def _train_offline(
+        self,
+        input_data,
+        training_step,
+        reward=None,
+        policy_obs=None,
+    ):
+        """
+        Train the value networks offline with given rewards
+        """
+        self._update_slow_target()
+        metrics = {}
+
+
+        # Get imagined rollout of the base policy in the current world model
+        imag_feat, imag_state, imag_action_dict = self._imagine_offline(
+            input_data,
+            self._config.imag_horizon,
+            mode="base_only",
+        )
+
+        if policy_obs is not None:
+            images = {
+                    "cam0": policy_obs["agentview_image"],
+                    "cam1": policy_obs["robot0_eye_in_hand_image"], }
+            states = policy_obs["state"][:, -1]
+            pred_base_actions = self.base_policy.policy.agent.get_actions(images, states, )
+            imag_feat_pred, imag_state_pred, _ = self._imagine_offline(
+                input_data,
+                self._config.imag_horizon,
+                mode="base_only",
+                pred_base_actions = pred_base_actions
+            )
+        
+        # imag_feat: img_horzion x B x d
+        # reward: B x batch_length 
+        reward = reward[:, :len(imag_feat)].reshape(len(imag_feat), -1).unsqueeze(-1) # reshape to (img_horizon, B, 1)
+        if policy_obs is not None:
+            cosine = nn.functional.cosine_similarity(imag_feat.detach(), imag_feat_pred.detach(), dim=-1).unsqueeze(-1).detach()
+            lps_reward = reward + (cosine-1)/2
+            # Combine on the batch dimension: img_horizon x B x 1
+            reward = torch.cat( [reward, lps_reward], dim=1)
+            for k in imag_state:
+                if k != "ID":
+                    imag_state[k] = torch.cat([ imag_state[k], imag_state_pred[k]], dim=1)
+            imag_feat = torch.cat([imag_feat, imag_feat_pred], dim=1)
+
+        # Compute the target values using bootstrapping and terminal value fn
+        target, weights, _ = self._compute_target(imag_feat, imag_state, reward)
+      
+        # Compute the critic losses
+        with tools.RequiresGrad(self.value):
+            with torch.amp.autocast("cuda", enabled=self._use_amp):
+                value = self.value(imag_feat[:-1].detach())
+                target = torch.stack(target, dim=1)
+                # (time, batch, 1), (time, batch, 1) -> (time, batch)
+                value_loss = self.value.update(imag_feat[:-1].detach(), target)
+                if self._config.critic["slow_target"]:
+                    slow_target = self._slow_value(imag_feat[:-1].detach())
+                    slow_loss = self.value.update(
+                        imag_feat[:-1].detach(), slow_target.mode().detach()
+                    )
+                    metrics.update(tools.tensorstats(value_loss, "orig_critic_loss"))
+                    metrics.update(tools.tensorstats(slow_loss, "slow_critic_loss"))
+                    value_loss += slow_loss
+                # (time, batch, 1), (time, batch, 1) -> (1,)
+                value_loss = torch.mean(weights[:-1] * value_loss[:, :, None])
+
+        metrics.update(tools.tensorstats(value.mode(), "value"))
+        metrics.update(tools.tensorstats(target, "target"))
+       
+        metrics.update(
+            tools.tensorstats(imag_action_dict["base_action"], "imag_base_action")
+        )
+        metrics.update(self.value.get_stats(features=imag_feat[:-1].detach()))
+
+        # Train the value network
+        with tools.RequiresGrad(self):
+            metrics.update(self._value_opt(value_loss, self.value.parameters()))
+        
+        return imag_feat, imag_state, None, weights, metrics
+
     def _imagine(self, input_data, horizon, mode="base_only"):
         """
         MODE:
@@ -230,6 +312,55 @@ class ImagBehavior(nn.Module):
 
         return feats, states, actions_dict
 
+    def _imagine_offline(self, input_data, horizon, mode="base_only", pred_base_actions=None):
+        """
+        MODE:
+        - base_only: Use only base actions for imagination [used during training]
+        - residual_buffer: Use residual actions from buffer [used during value estimation]
+        """
+        assert mode in ["default", "residual_buffer", "base_only"]
+        dynamics = self._world_model.dynamics
+        flatten = lambda x: x.reshape([-1] + list(x.shape[2:]))
+        start = {k: flatten(v) for k, v in input_data["post"].items()}
+        
+        start["ID"] = torch.tensor(0)  # To keep track of imag_timestep
+
+        base_action = input_data["obs_orig"]["action"] if pred_base_actions is None else pred_base_actions
+     
+        # zero-like base-action for residuals
+        residual_action = torch.zeros_like(base_action)
+
+        def step(prev, _):
+            state, _, _ = prev
+            feat = dynamics.get_feat(state)
+            
+            base_policy_action = base_action[:, state["ID"]]
+            if mode == "base_only":
+                residual_policy_action = torch.zeros_like(base_policy_action)
+            elif mode == "residual_buffer":
+                residual_policy_action = residual_action[:, state["ID"]]
+            else:
+                raise NotImplementedError(mode)
+            action_dict = {
+                "base_action": base_policy_action,
+                "residual_action": residual_policy_action,
+            }
+            
+            action_sum = self.get_action_sum(
+                base_actions=base_policy_action, residual_actions=residual_policy_action
+            )
+            # Use the total_action to simulate dynamics for next state
+            succ = dynamics.img_step(state, action_sum)
+            succ["ID"] = state["ID"] + 1
+            return succ, feat, action_dict
+
+        succ, feats, actions_dict = tools.static_scan(
+            step, [torch.arange(horizon)], (start, None, None)
+        )
+        states = {k: torch.cat([start[k][None], v[:-1]], 0) for k, v in succ.items()}
+        
+        return feats, states, actions_dict
+
     def get_action_sum(self, base_actions, residual_actions):
         # Assert same shape
         assert (
@@ -244,17 +375,28 @@ class ImagBehavior(nn.Module):
     def reset(self):
         self.base_policy.reset()
 
-    def get_action(self, obs, feat, latent, weighting_in_base=True):
+    def get_action(self, obs, feat, latent, weighting_in_base=True, offline=False):
+        use_mppi =  self._config.use_mppi
+     
+        weighting_in_base = weighting_in_base & use_mppi # if we use PS, turn-off to sample multiple candidates from WeightedActionWrapper
         with torch.no_grad():
             base_action = self.base_policy.get_action(
                 obs, weighting=weighting_in_base, get_full_action=True
-            )
+            ) if use_mppi else self.base_policy.get_action( obs, weighting=weighting_in_base, get_full_action=True, samples=self._config.mppi["num_samples"])
+         
+       
             base_action = torch.tensor(
-                base_action, device=feat.device, dtype=feat.dtype
-            )
-
-            # Call the MPPI planner and get the best planned actions
-            mppi_action = self.mppi_actions(latent, base_action=base_action)
+                base_action, device=feat.device, dtype=feat.dtype)
+            
+            if use_mppi:
+                # Call the MPPI planner and get the best planned actions
+                # base_action: B x d x T
+                mppi_action = self.mppi_actions(latent, base_action=base_action) if not offline else self.offline_mppi_actions(latent, base_action=base_action)
+            else:
+                # Call the policy steering to get the best action 
+                base_action = einops.rearrange(base_action, '(B s) t d -> B s d t', s = self._config.mppi["num_samples"])
+                base_action = self.policy_steering(latent, base_action=base_action)
+                mppi_action = torch.zeros_like(base_action)
 
             # Pass the 0th actions for execution in the environment
             action_dict = {
@@ -272,6 +414,204 @@ class ImagBehavior(nn.Module):
                 )
 
         return action_dict
+    
+    def policy_steering(self, latent, base_action):
+        """
+        Args:
+            latent: dict of tensors (BS, ...)
+            base_action: (BS, num_samples, action_dim, horizon)
+
+        Returns:
+            action: (BS, action_dim)
+        """
+        _BS, num_samples, action_dim, horizon = base_action.shape
+
+        # Expand latent across samples
+        _state = {k: v.unsqueeze(1) for k, v in latent.items()}
+        _state = {
+            k: v.repeat(*[1 if i != 1 else num_samples for i in range(len(v.shape))])
+            for k, v in _state.items()
+        }
+
+        input_data = {
+            "post": _state,
+            "obs_orig": {
+                "base_action": base_action,  # already correct shape
+                "residual_action": torch.zeros_like(base_action)
+            },
+        }
+
+        # Imagine trajectories
+        imag_feat, imag_state, imag_action = self._imagine(
+            input_data, horizon, mode="residual_buffer"
+        )
+
+        # Evaluate trajectories
+        with torch.no_grad():
+            G = 0
+            for t in range(horizon - 1):
+                G += self.value(imag_feat[t]).mode()
+
+            final_value = G + self.value(imag_feat[-1]).mode()
+
+            if self._config.mppi["uncertainty_cost"] > 0:
+                q_std = self.value.get_std(imag_feat[-1])
+                final_value -= self._config.mppi["uncertainty_cost"] * q_std
+
+        values = final_value.squeeze(-1).reshape(_BS, num_samples)
+
+        # Best sample index
+        best_idx = values.argmax(dim=1)  # (BS,)
+
+        # Gather best trajectory
+        best_actions = torch.gather(
+            base_action,
+            1,
+            best_idx.view(_BS, 1, 1, 1).expand(-1, 1, action_dim, horizon),
+        ).squeeze(1)  # (BS, action_dim, horizon)
+
+
+        return best_actions
+
+    def offline_mppi_actions(self, latent, base_action):
+        """
+        latent: Dict containing stoch, deter, logit, each of shape N_envs x ...
+        base_action: N_envs x pred_horizon x action_dim
+
+        Output:
+        Action shape: N_envs x action_dim
+        """
+        num_samples = self._config.mppi["num_samples"]
+        horizon = self._config.mppi["horizon"]
+        action_dim = self._config.num_actions
+
+        _BS = latent["stoch"].shape[0]
+        _state = {k: v.unsqueeze(1) for k, v in latent.items()}  # _BS x 1 x 32 x 32
+        _state = {
+            k: v.repeat(*[1 if i != 1 else num_samples for i in range(len(v.shape))])
+            for k, v in _state.items()
+        }  # _BS x num_samples x 32 x 32
+
+        # Convert base_action to shape (num_envs, num_samples, pred_horizon, action_dim)
+        base_action = base_action.unsqueeze(1).expand(-1, num_samples, -1, -1)
+
+        mean = torch.zeros(_BS, action_dim, horizon, device=self._config.device)
+        std = (
+            torch.ones(_BS, action_dim, horizon, device=self._config.device)
+            * self._config.mppi["init_std"]
+        )
+
+        # Perform CEM iterations to find optimal action sequence
+        for _ in range(self._config.mppi["iterations"]):
+            # MPPI actions: (_BS, action_dim, num_samples, horizon)
+            mppi_actions = (
+                mean.unsqueeze(2)
+                + std.unsqueeze(2)
+                * torch.randn(
+                    _BS, action_dim, num_samples, horizon, device=self._config.device
+                )
+            ).clamp(
+                -self._config.mppi["abs_residual"], self._config.mppi["abs_residual"]
+            )
+            input_data = {
+                "post": _state,
+                "obs_orig": {
+                    # Actions: BS x num_samples x action_dim x pred_horizon
+                    "base_action": base_action,
+                    "residual_action": mppi_actions.permute(0, 2, 1, 3),
+                },
+            }
+
+            imag_feat, imag_state, imag_action = self._imagine(
+                input_data, horizon, mode="residual_buffer"
+            )
+
+            # # Estimate n-step TD value
+            with torch.no_grad():
+                if self._config.train_dp_mppi_params["use_discrim"]:
+                    if self._config.train_dp_mppi_params["discrim_state_only"]:
+                        get_reward = lambda f, a: self._world_model.get_reward(f).mode()
+                    else:
+                        get_reward = lambda f, a: self._world_model.get_reward(
+                            torch.cat([f, a], dim=-1)
+                        ).mode()
+                else:
+                    get_reward = lambda f, a: self._world_model.get_reward(f).mode()
+
+                get_cont = lambda f: self._world_model.heads["cont"](f).mean
+                G, discount = 0, 1
+                for t in range(horizon - 1):
+                    # just use value estimates instead of rewards
+                    G += self.value(imag_feat[t]).mode()
+
+                final_value = (
+                    G + self.value(imag_feat[-1]).mode()
+                )  # Shape: (BS*num_samples, 1)
+                if self._config.mppi["uncertainty_cost"] > 0:
+                    q_std = self.value.get_std(imag_feat[-1])
+                    final_value -= (
+                        discount * self._config.mppi["uncertainty_cost"] * q_std
+                    )
+ 
+            values = final_value.squeeze(-1).reshape(
+                _BS, num_samples
+            )  # (_BS, num_samples)
+
+            elite_idxs = torch.topk(
+                values, self._config.mppi["num_elites"], dim=1
+            ).indices  # (_BS, num_elites)
+            elite_actions = torch.gather(
+                mppi_actions.permute(
+                    0, 3, 2, 1
+                ),  # (_BS, action_dim, num_samples, horizon) -> [BS, horizon, num_samples, action_dim]
+                2,
+                elite_idxs.unsqueeze(1)
+                .unsqueeze(-1)
+                .expand(-1, horizon, -1, action_dim),
+            )  # Shape: [BS, horizon, num_elites, action_dim]
+            elite_value = torch.gather(values, 1, elite_idxs)  # (_BS, num_elites)
+
+            # update the mean and std
+            max_value = elite_value.max(1)[0]  # (_BS,) max value across elite actions
+            score = torch.exp(
+                self._config.mppi["temperature"]
+                * (elite_value - max_value.unsqueeze(1))
+            )  # (_BS, num_elites)
+            score /= score.sum(1, keepdim=True)  # Normalize score across elites
+            score = (
+                score.unsqueeze(1).expand(-1, horizon, -1).unsqueeze(-1)
+            )  # (_BS, horizon, num_elites, 1)
+            mean = torch.sum(score * elite_actions, dim=2) / (
+                score.sum(2, keepdim=True) + 1e-9
+            ).squeeze(
+                -1
+            )  # (_BS, horizon, action_dim)
+
+            std = torch.sqrt(
+                torch.sum(score * (elite_actions - mean.unsqueeze(2)) ** 2, dim=2)
+                / (score.sum(2, keepdim=True) + 1e-9).squeeze(-1)
+            )  # (_BS, horizon, action_dim)
+            std = std.clamp_(
+                self._config.mppi["min_std"], self._config.mppi["max_std"]
+            )  # Clamp the standard deviation
+            mean = mean.permute(0, 2, 1)
+            std = std.permute(0, 2, 1)
+
+        # Select final action
+        max_value_idx = values.argmax(dim=1)  # Shape: (_BS,)
+
+        # Expand max_value_idx to match the shape of mppi_actions (shape: (_BS, action_dim, num_samples, pred_horizon))
+        expanded_idx = (
+            max_value_idx.unsqueeze(1)
+            .unsqueeze(2)
+            .unsqueeze(3)
+            .expand(-1, mppi_actions.size(1), -1, mppi_actions.size(3))
+        )
+        max_mppi_actions = torch.gather(mppi_actions, 2, expanded_idx).squeeze(
+            2
+        )  # Shape: (_BS, action_dim, pred_horizon)
+
+        return max_mppi_actions
 
     def mppi_actions(self, latent, base_action):
         """
@@ -450,6 +790,7 @@ class ImagBehavior(nn.Module):
         else:
             discount = self._config.discount * torch.ones_like(reward)
         value = self.value(imag_feat).mode()
+        
         target = tools.lambda_return(
             reward[:-1],
             value[:-1],
