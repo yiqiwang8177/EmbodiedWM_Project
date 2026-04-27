@@ -29,8 +29,8 @@ defaults:
   normalize_state_actions: False
   image_size: 64
   obs_horizon: 2 # Number of observations to stack
-  action_horizon: 1 # Number of actions to take
-  pred_horizon: 8 # Number of actions to stack
+  action_horizon: 16 # Number of actions to take
+  pred_horizon: 16 # Number of actions to stack
   num_buffer_transitions: 100000
   state_dim: -1 # To be set when loading expert data
   action_dim: -1 # To be set when loading expert data
@@ -84,14 +84,14 @@ defaults:
   use_mppi: True # if false, use policy steering
   lps_reward: False # if true, use lps rewards
   batch_size: 128 # 16
-  batch_length: 8 # 32
+  batch_length: 16 # 32
   model_lr: 1e-4
   opt_eps: 1e-8
   grad_clip: 1000
   opt: 'adam'
   discount: 0.99
   discount_lambda: 0.95
-  imag_horizon: 7
+  imag_horizon: 15
 
   # DP Config
   pretrained_base_ckpt: ''
@@ -134,7 +134,7 @@ defaults:
     action_l2_cost: 0
 
     # learning
-    horizon: 8
+    horizon: 16
     discount: 0.99
 
     pretrained_ckpt: ""

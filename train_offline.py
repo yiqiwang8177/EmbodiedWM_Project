@@ -211,6 +211,7 @@ def train_eval(config):
         # 1. rewards: either ground-truth rewards or extra rewards from Latent Policy Steering
         # 2. the value function predicts discounted future rewards.
         # 3. combines the learned WM+value function to improve the policy's inference via policy steering or planning.
+    
         trainer.train_wm_offline()
 
     envs.close()

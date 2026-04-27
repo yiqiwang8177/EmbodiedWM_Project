@@ -597,6 +597,7 @@ class SAILORTrainer:
                 self.logger.scalar(f"round_time", time.time() - start_time)
 
     def _train_wm_offline(self):
+        self.eval_base_policy(prefix="init", round_id=-1, base_policy=self.base_policy)
         expert_dataset = tools.make_dataset(
             self.expert_eps,
             batch_length=self.config.batch_length,

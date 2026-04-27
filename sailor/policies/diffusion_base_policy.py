@@ -385,7 +385,7 @@ class DiffusionBasePolicy:
         self.trainer.model.set_train()
         self.trainer.set_train()
 
-    def get_action(self, obs, scale=1.0, weighting=True, get_full_action=False, samples=1):
+    def get_action(self, obs, scale=1.0, weighting=False, get_full_action=False, samples=1):
         """
         obs: B x T x ... (no stacking)
         Policy takes care of all the preprocessing

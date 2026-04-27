@@ -197,28 +197,31 @@ class ImagBehavior(nn.Module):
 
 
         # Get imagined rollout of the base policy in the current world model
-        imag_feat, imag_state, imag_action_dict = self._imagine_offline(
-            input_data,
-            self._config.imag_horizon,
-            mode="base_only",
-        )
+        with torch.no_grad():
+            imag_feat, imag_state, imag_action_dict = self._imagine_offline(
+                input_data,
+                self._config.imag_horizon,
+                mode="base_only",
+            )
 
         if policy_obs is not None:
             images = {
                     "cam0": policy_obs["agentview_image"],
                     "cam1": policy_obs["robot0_eye_in_hand_image"], }
             states = policy_obs["state"][:, -1]
-            pred_base_actions = self.base_policy.policy.agent.get_actions(images, states, )
-            imag_feat_pred, imag_state_pred, _ = self._imagine_offline(
-                input_data,
-                self._config.imag_horizon,
-                mode="base_only",
-                pred_base_actions = pred_base_actions
-            )
+            with torch.no_grad():
+                pred_base_actions = self.base_policy.policy.agent.get_actions(images, states, )
+                imag_feat_pred, imag_state_pred, _ = self._imagine_offline(
+                    input_data,
+                    self._config.imag_horizon,
+                    mode="base_only",
+                    pred_base_actions = pred_base_actions
+                )
         
         # imag_feat: img_horzion x B x d
         # reward: B x batch_length 
         reward = reward[:, :len(imag_feat)].reshape(len(imag_feat), -1).unsqueeze(-1) # reshape to (img_horizon, B, 1)
+        cosine=lps_reward=None
         if policy_obs is not None:
             cosine = nn.functional.cosine_similarity(imag_feat.detach(), imag_feat_pred.detach(), dim=-1).unsqueeze(-1).detach()
             lps_reward = reward + (cosine-1)/2
@@ -252,6 +255,8 @@ class ImagBehavior(nn.Module):
 
         metrics.update(tools.tensorstats(value.mode(), "value"))
         metrics.update(tools.tensorstats(target, "target"))
+        if lps_reward is not None:
+            metrics.update(tools.tensorstats(cosine, "lps_reward"))
        
         metrics.update(
             tools.tensorstats(imag_action_dict["base_action"], "imag_base_action")
